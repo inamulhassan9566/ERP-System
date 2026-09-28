@@ -1,0 +1,589 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  name             String
+  passwordHash     String
+  roleId           String
+  role             Role              @relation(fields: [roleId], references: [id])
+  branchId         String?
+  branch           Branch?           @relation(fields: [branchId], references: [id])
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  createdRules     DiscountRule[]    @relation("RuleCreator")
+  updatedRules     DiscountRule[]    @relation("RuleUpdater")
+  ruleVersions     DiscountRuleVersion[]
+  approvalRequestsRequested ApprovalRequest[] @relation("RequestRequester")
+  approvalRequestsReviewed  ApprovalRequest[] @relation("RequestReviewer")
+  discountApplications     DiscountApplication[]
+  auditLogs        AuditLog[]
+
+  @@index([roleId])
+  @@index([email])
+}
+
+model Role {
+  id                 String    @id @default(cuid())
+  code               String    @unique // 'ADMIN', 'MANAGER', 'SALES_STAFF'
+  name               String
+  description        String?
+  maxDiscountPercent Float     @default(10) // e.g. 10% for sales staff, 25% manager, 100% admin
+  maxDiscountAmount  Float     @default(10000)
+  canOverridePrice   Boolean   @default(false)
+  canDiscountBill    Boolean   @default(false)
+  canApprove         Boolean   @default(false)
+  allowedComponents  String[]  @default(["MAKING_CHARGE", "LABOUR_CHARGE"]) // Components this role can manually discount
+  users              User[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model CustomerGroup {
+  id          String     @id @default(cuid())
+  code        String     @unique // 'VIP', 'WHOLESALE', 'RETAIL', 'B2B', 'EMPLOYEE'
+  name        String
+  description String?
+  customers   Customer[]
+  targets     DiscountRuleTarget[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model CustomerType {
+  id          String     @id @default(cuid())
+  code        String     @unique // 'INDIVIDUAL', 'CORPORATE'
+  name        String
+  customers   Customer[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model CustomerTier {
+  id          String     @id @default(cuid())
+  code        String     @unique // 'PLATINUM', 'GOLD', 'SILVER'
+  name        String
+  customers   Customer[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Customer {
+  id                   String            @id @default(cuid())
+  code                 String            @unique
+  name                 String
+  phone                String?
+  email                String?
+  customerGroupId      String?
+  customerGroup        CustomerGroup?    @relation(fields: [customerGroupId], references: [id])
+  customerTypeId       String?
+  customerType         CustomerType?     @relation(fields: [customerTypeId], references: [id])
+  customerTierId       String?
+  customerTier         CustomerTier?     @relation(fields: [customerTierId], references: [id])
+  isNewCustomer        Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  discountApplications DiscountApplication[]
+  targets              DiscountRuleTarget[]
+
+  @@index([customerGroupId])
+  @@index([code])
+}
+
+model Category {
+  id            String         @id @default(cuid())
+  code          String         @unique // 'GOLD_CHAINS', 'GOLD_RINGS', etc.
+  name          String
+  subCategories SubCategory[]
+  products      Product[]
+  targets       DiscountRuleTarget[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model SubCategory {
+  id         String     @id @default(cuid())
+  categoryId String
+  category   Category   @relation(fields: [categoryId], references: [id])
+  code       String     @unique
+  name       String
+  products   Product[]
+  targets    DiscountRuleTarget[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([categoryId])
+}
+
+model ArticleGroup {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  name      String
+  articles  Article[]
+  products  Product[]
+  targets   DiscountRuleTarget[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Article {
+  id             String       @id @default(cuid())
+  articleGroupId String
+  articleGroup   ArticleGroup @relation(fields: [articleGroupId], references: [id])
+  code           String       @unique
+  name           String
+  products       Product[]
+  targets        DiscountRuleTarget[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([articleGroupId])
+}
+
+model Metal {
+  id        String     @id @default(cuid())
+  code      String     @unique // 'GOLD', 'SILVER', 'DIAMOND', 'PLATINUM', 'OTHER'
+  name      String
+  purities  Purity[]
+  products  Product[]
+  targets   DiscountRuleTarget[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Purity {
+  id        String     @id @default(cuid())
+  metalId   String
+  metal     Metal      @relation(fields: [metalId], references: [id])
+  code      String     @unique // '22K', '18K', '925_SILVER', etc.
+  name      String
+  products  Product[]
+  targets   DiscountRuleTarget[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([metalId])
+}
+
+model Product {
+  id                String         @id @default(cuid())
+  sku               String         @unique
+  name              String
+  categoryId        String
+  category          Category       @relation(fields: [categoryId], references: [id])
+  subCategoryId     String?
+  subCategory       SubCategory?   @relation(fields: [subCategoryId], references: [id])
+  articleGroupId    String?
+  articleGroup      ArticleGroup?  @relation(fields: [articleGroupId], references: [id])
+  articleId         String?
+  article           Article?       @relation(fields: [articleId], references: [id])
+  metalId           String
+  metal             Metal          @relation(fields: [metalId], references: [id])
+  purityId          String
+  purity            Purity         @relation(fields: [purityId], references: [id])
+  grossWeight       Float          @default(0) // grams
+  netWeight         Float          @default(0) // grams
+  stoneWeight       Float          @default(0) // grams
+  stoneCarat        Float          @default(0) // carats
+  wastagePercent    Float          @default(0) // %
+  baseMetalValue    Float          @default(0) // ₹
+  baseMakingCharge  Float          @default(0) // ₹
+  baseWastageCharge Float          @default(0) // ₹
+  baseStoneValue    Float          @default(0) // ₹
+  baseOtherCharges  Float          @default(0) // ₹
+  brand             String?
+  collection        String?
+  design            String?
+  tags              String[]       @default([])
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  targets           DiscountRuleTarget[]
+
+  @@index([sku])
+  @@index([categoryId])
+  @@index([metalId])
+  @@index([purityId])
+}
+
+model Branch {
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  name                 String
+  address              String?
+  users                User[]
+  discountApplications DiscountApplication[]
+  targets              DiscountRuleTarget[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+}
+
+model SalesChannel {
+  id                   String                @id @default(cuid())
+  code                 String                @unique // 'POS', 'WHOLESALE', 'B2B', 'ONLINE', 'OTHER'
+  name                 String
+  discountApplications DiscountApplication[]
+  targets              DiscountRuleTarget[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+}
+
+model DiscountReason {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum RuleStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+enum StackingMethod {
+  STACK
+  HIGHEST
+  SEQUENTIAL
+}
+
+model DiscountRule {
+  id               String                  @id @default(cuid())
+  code             String                  @unique // e.g. "RULE-001"
+  name             String
+  description      String?
+  status           RuleStatus              @default(DRAFT)
+  priority         Int                     @default(10) // higher number = higher priority
+  stackable        Boolean                 @default(false)
+  stackingMethod   StackingMethod          @default(STACK)
+  approvalRequired Boolean                 @default(false)
+  startDate        DateTime
+  endDate          DateTime?
+  startTime        String?                 // "HH:mm"
+  endTime          String?                 // "HH:mm"
+  daysOfWeek       String?                 // "ALL", "WEEKDAYS", "WEEKENDS", or comma separated 0-6
+  currentVersion   Int                     @default(1)
+  createdById      String?
+  createdBy        User?                   @relation("RuleCreator", fields: [createdById], references: [id])
+  updatedById      String?
+  updatedBy        User?                   @relation("RuleUpdater", fields: [updatedById], references: [id])
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  target           DiscountRuleTarget?
+  components       DiscountRuleComponent[]
+  condition        DiscountRuleCondition?
+  versions         DiscountRuleVersion[]
+  usages           DiscountApplicationComponent[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([code])
+}
+
+enum CustomerTargetType {
+  ALL
+  SPECIFIC_CUSTOMER
+  CUSTOMER_GROUP
+  CUSTOMER_TYPE
+  CUSTOMER_TIER
+  NEW_CUSTOMER
+  EXISTING_CUSTOMER
+  VIP
+  WHOLESALE
+  B2B
+  EMPLOYEE
+}
+
+enum ProductTargetScope {
+  ALL
+  CATEGORY
+  SUB_CATEGORY
+  ARTICLE_GROUP
+  SPECIFIC_ARTICLE
+  SKU
+  BRAND
+  COLLECTION
+}
+
+model DiscountRuleTarget {
+  id                   String              @id @default(cuid())
+  ruleId               String              @unique
+  rule                 DiscountRule        @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  targetCustomerType   CustomerTargetType  @default(ALL)
+  targetCustomerId     String?
+  targetCustomer       Customer?           @relation(fields: [targetCustomerId], references: [id])
+  targetCustomerGroupId String?
+  targetCustomerGroup  CustomerGroup?      @relation(fields: [targetCustomerGroupId], references: [id])
+  
+  targetProductScope   ProductTargetScope  @default(ALL)
+  targetCategoryId     String?
+  targetCategory       Category?           @relation(fields: [targetCategoryId], references: [id])
+  targetSubCategoryId  String?
+  targetSubCategory    SubCategory?        @relation(fields: [targetSubCategoryId], references: [id])
+  targetArticleGroupId String?
+  targetArticleGroup   ArticleGroup?       @relation(fields: [targetArticleGroupId], references: [id])
+  targetArticleId      String?
+  targetArticle        Article?            @relation(fields: [targetArticleId], references: [id])
+  targetSku            String?
+  targetProduct        Product?            @relation(fields: [targetSku], references: [sku])
+
+  targetMetalId        String?
+  targetMetal          Metal?              @relation(fields: [targetMetalId], references: [id])
+  targetPurityId       String?
+  targetPurity         Purity?             @relation(fields: [targetPurityId], references: [id])
+
+  targetBranchId       String?
+  targetBranch         Branch?             @relation(fields: [targetBranchId], references: [id])
+  targetSalesChannelId String?
+  targetSalesChannel   SalesChannel?       @relation(fields: [targetSalesChannelId], references: [id])
+
+  @@index([ruleId])
+}
+
+enum ComponentType {
+  // Metal
+  METAL_VALUE
+  GOLD_VALUE
+  SILVER_VALUE
+  OTHER_METAL_VALUE
+  // Manufacturing
+  MAKING_CHARGE
+  LABOUR_CHARGE
+  WASTAGE
+  OTHER_MANUFACTURING
+  // Stones
+  STONE_VALUE
+  DIAMOND_VALUE
+  STONE_SETTING
+  OTHER_STONE
+  // Other
+  HALLMARK_CHARGE
+  CERTIFICATION_CHARGE
+  ENGRAVING
+  POLISHING
+  OTHER_CHARGES
+  // Totals
+  ENTIRE_ITEM
+  ENTIRE_BILL
+}
+
+enum CalculationMethod {
+  PERCENTAGE
+  FIXED_AMOUNT
+  AMOUNT_PER_GRAM
+  AMOUNT_PER_PIECE
+  AMOUNT_PER_CARAT
+  PRICE_OVERRIDE
+}
+
+enum WeightBasis {
+  GROSS_WEIGHT
+  NET_WEIGHT
+}
+
+model DiscountRuleComponent {
+  id                 String             @id @default(cuid())
+  ruleId             String
+  rule               DiscountRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  component          ComponentType
+  calculationMethod  CalculationMethod  @default(PERCENTAGE)
+  discountValue      Float              // e.g. 20 (for 20%), 2000 (for ₹2000), 5 (for ₹5/g)
+  weightBasis        WeightBasis        @default(NET_WEIGHT)
+  maxDiscountPercent Float?
+  maxDiscountAmount  Float?
+  maxPerItem         Float?
+  maxPerBill         Float?
+
+  @@index([ruleId])
+  @@index([component])
+}
+
+model DiscountRuleCondition {
+  id               String       @id @default(cuid())
+  ruleId           String       @unique
+  rule             DiscountRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  minBillValue     Float?
+  maxBillValue     Float?
+  minQuantity      Int?
+  maxQuantity      Int?
+  minWeight        Float?
+  maxWeight        Float?
+  minItemValue     Float?
+  maxItemValue     Float?
+  customConditions String?      // JSON string for extensibility
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([ruleId])
+}
+
+model DiscountRuleVersion {
+  id            String       @id @default(cuid())
+  ruleId        String
+  rule          DiscountRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  snapshot      String       // JSON string of complete rule definition at this version
+  changeSummary String
+  changedById   String?
+  changedBy     User?        @relation(fields: [changedById], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@unique([ruleId, versionNumber])
+  @@index([ruleId])
+}
+
+enum ApplicationStatus {
+  APPLIED
+  PENDING_APPROVAL
+  REJECTED
+}
+
+model DiscountApplication {
+  id                  String                         @id @default(cuid())
+  transactionNumber   String                         @unique // e.g. "TXN-2026-0001"
+  customerId          String?
+  customer            Customer?                      @relation(fields: [customerId], references: [id])
+  branchId            String?
+  branch              Branch?                        @relation(fields: [branchId], references: [id])
+  salesChannelId      String?
+  salesChannel        SalesChannel?                  @relation(fields: [salesChannelId], references: [id])
+  userId              String
+  user                User                           @relation(fields: [userId], references: [id])
+  totalGrossAmount    Float
+  totalDiscountAmount Float
+  totalFinalAmount    Float
+  status              ApplicationStatus              @default(APPLIED)
+  isManual            Boolean                        @default(false)
+  approvalRequestId   String?
+  approvalRequest     ApprovalRequest?               @relation(fields: [approvalRequestId], references: [id])
+  notes               String?
+  calculationTrace    String                         // JSON string representing entire trace
+  createdAt           DateTime                       @default(now())
+
+  items               DiscountApplicationItem[]
+  appliedComponents   DiscountApplicationComponent[]
+
+  @@index([transactionNumber])
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+model DiscountApplicationItem {
+  id                    String              @id @default(cuid())
+  discountApplicationId String
+  discountApplication   DiscountApplication @relation(fields: [discountApplicationId], references: [id], onDelete: Cascade)
+  productId             String?
+  sku                   String
+  productName           String
+  quantity              Int                 @default(1)
+  grossWeight           Float               @default(0)
+  netWeight             Float               @default(0)
+  totalGross            Float
+  totalDiscount         Float
+  totalFinal            Float
+
+  @@index([discountApplicationId])
+}
+
+model DiscountApplicationComponent {
+  id                    String              @id @default(cuid())
+  discountApplicationId String
+  discountApplication   DiscountApplication @relation(fields: [discountApplicationId], references: [id], onDelete: Cascade)
+  itemId                String?
+  ruleId                String?
+  rule                  DiscountRule?       @relation(fields: [ruleId], references: [id])
+  ruleVersionNumber     Int?
+  componentType         ComponentType
+  originalValue         Float
+  discountType          CalculationMethod
+  discountRate          Float
+  discountAmount        Float
+  finalValue            Float
+  isManual              Boolean             @default(false)
+  manualReason          String?
+
+  @@index([discountApplicationId])
+  @@index([ruleId])
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ApprovalRequest {
+  id                      String                @id @default(cuid())
+  requestCode             String                @unique // e.g. "APR-001"
+  requestedById           String
+  requestedBy             User                  @relation("RequestRequester", fields: [requestedById], references: [id])
+  reviewerId              String?
+  reviewer                User?                 @relation("RequestReviewer", fields: [reviewerId], references: [id])
+  status                  ApprovalStatus        @default(PENDING)
+  requestedDiscountPercent Float
+  requestedDiscountAmount Float
+  userAllowedPercent      Float
+  userAllowedAmount       Float
+  reason                  String
+  transactionSnapshot     String                // JSON
+  calculationPreview      String                // JSON
+  reviewerComment         String?
+  reviewedAt              DateTime?
+  createdAt               DateTime              @default(now())
+
+  discountApplications    DiscountApplication[]
+
+  @@index([status])
+  @@index([requestedById])
+}
+
+enum AuditEntityType {
+  RULE
+  DISCOUNT_APPLICATION
+  APPROVAL
+  MANUAL_DISCOUNT
+  CONFIG
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPLY
+  ACTIVATE
+  DEACTIVATE
+  APPROVE
+  REJECT
+  VERSION_CREATE
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  entityType AuditEntityType
+  entityId   String
+  action     AuditAction
+  userId     String
+  user       User            @relation(fields: [userId], references: [id])
+  userName   String
+  details    String          // JSON string
+  createdAt  DateTime        @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
